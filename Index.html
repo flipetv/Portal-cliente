@@ -171,12 +171,13 @@ const esc = (s) => (s || "").toString().replace(/[&<>"']/g, (c) => ({ "&": "&amp
 const sortByCreatedAtDesc = (a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0);
 
 const CATEGORIES = [
-  { id: "social", label: "Artes Sociais", icon: "📢" },
-  { id: "encartes", label: "Encartes", icon: "📄" },
+  { id: "redes_sociais", label: "Redes Sociais", icon: "📢" },
+  { id: "comercial", label: "Comercial", icon: "💼" },
   { id: "relatorios", label: "Relatórios", icon: "📈" },
+  { id: "em_producao", label: "Em Produção", icon: "🛠️" },
 ];
-const CATEGORY_BG = { social: "#FCE7EF", encartes: "#EAF1FE", relatorios: "#FFF6DA" };
-const CATEGORY_EMOJI = { social: "🌷", encartes: "📄", relatorios: "📈" };
+const CATEGORY_BG = { redes_sociais: "#FCE7EF", comercial: "#EAF1FE", relatorios: "#FFF6DA", em_producao: "#ECE7FB" };
+const CATEGORY_EMOJI = { redes_sociais: "📢", comercial: "💼", relatorios: "📈", em_producao: "🛠️" };
 
 const CRM_COLUMNS = [
   { id: "recebido", title: "LEAD RECEBIDO" },
@@ -197,7 +198,7 @@ let PAGE = "hub";         // 'admin' | 'hub' | 'material' | 'crm'
 let CLIENTS_CACHE = [];   // usado pelo admin
 let SELECTED_CLIENT_ID = null;
 let ADMIN_TAB = "materiais";
-let ACTIVE_CATEGORY = "social";
+let ACTIVE_CATEGORY = "redes_sociais";
 let ACTIVE_MATERIAL_ID = null;
 let SELECTED_LEAD_ID = null;
 
@@ -281,9 +282,13 @@ async function renderAdmin() {
       <div class="sidebar">
         <div class="sidebar-label">MEUS CLIENTES</div>
         ${CLIENTS_CACHE.map((c) => `
-          <button class="sidebar-row ${c.id === SELECTED_CLIENT_ID ? "active" : ""}" onclick="selectClient('${c.id}')">
-            <span>${esc(c.name)}</span>
-          </button>`).join("")}
+          <div style="display:flex;align-items:center;gap:2px">
+            <button class="sidebar-row ${c.id === SELECTED_CLIENT_ID ? "active" : ""}" style="flex:1" onclick="selectClient('${c.id}')">
+              <span>${esc(c.name)}</span>
+            </button>
+            <button onclick="editarCliente('${c.id}')" title="Editar" style="border:none;background:none;color:var(--muted);padding:4px;font-size:12px">✏️</button>
+            <button onclick="excluirCliente('${c.id}')" title="Excluir" style="border:none;background:none;color:var(--muted);padding:4px;font-size:12px">🗑️</button>
+          </div>`).join("")}
         <button class="sidebar-add" onclick="novoCliente()">+ novo cliente</button>
         <div class="sidebar-foot"><span>⚙</span><span>Configurações Globais</span></div>
       </div>
@@ -292,6 +297,22 @@ async function renderAdmin() {
           <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:18px">
             <div style="font-size:28px;font-weight:800;letter-spacing:-.5px">${esc(client.name)}</div>
             <div style="font-size:13px;color:var(--muted)">cliente desde ${esc(client.since || "")}</div>
+          </div>
+          <div class="card-box" style="margin-bottom:18px">
+            <div style="font-weight:600;font-size:14px">E-mails com acesso ao portal</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+              ${(client.authorizedEmails || []).length === 0
+                ? `<span class="empty">Nenhum e-mail liberado ainda.</span>`
+                : (client.authorizedEmails || []).map((email) => `
+                  <span class="tag" style="background:#fff;border:1px solid var(--border);gap:8px">
+                    ${esc(email)}
+                    <button onclick="removerEmail('${client.id}','${esc(email)}')" style="border:none;background:none;color:var(--muted);font-weight:700;padding:0">×</button>
+                  </span>`).join("")}
+            </div>
+            <div class="form-row">
+              <input class="inp" id="new-email-input" placeholder="email-do-cliente@empresa.com">
+              <button class="btn-accent" onclick="adicionarEmail('${client.id}')">Liberar acesso</button>
+            </div>
           </div>
           <div class="tabs">
             <button class="tab-btn ${ADMIN_TAB === "materiais" ? "active" : ""}" onclick="setAdminTab('materiais')">Materiais</button>
@@ -311,7 +332,49 @@ async function renderAdmin() {
 function selectClient(id) { SELECTED_CLIENT_ID = id; renderAdmin(); }
 function setAdminTab(tab) { ADMIN_TAB = tab; renderAdmin(); }
 
-async function novoCliente() {
+async function adicionarEmail(clientId) {
+  const input = $("new-email-input");
+  const email = input.value.trim().toLowerCase();
+  if (!email || !email.includes("@")) { alert("Digite um e-mail válido."); return; }
+  await db.collection("clients").doc(clientId).update({
+    authorizedEmails: firebase.firestore.FieldValue.arrayUnion(email),
+  });
+  renderAdmin();
+}
+
+async function removerEmail(clientId, email) {
+  if (!confirm(`Remover o acesso de ${email}?`)) return;
+  await db.collection("clients").doc(clientId).update({
+    authorizedEmails: firebase.firestore.FieldValue.arrayRemove(email),
+  });
+  renderAdmin();
+}
+
+async function editarCliente(id) {
+  const client = CLIENTS_CACHE.find((c) => c.id === id);
+  const novoNome = prompt("Novo nome do cliente:", client?.name || "");
+  if (!novoNome || !novoNome.trim()) return;
+  await db.collection("clients").doc(id).update({ name: novoNome.trim() });
+  renderAdmin();
+}
+
+async function excluirCliente(id) {
+  const client = CLIENTS_CACHE.find((c) => c.id === id);
+  if (!confirm(`Excluir "${client?.name}"? Isso também apaga os materiais e leads dele. Essa ação não pode ser desfeita.`)) return;
+
+  const [materiaisSnap, leadsSnap] = await Promise.all([
+    db.collection("materials").where("clientId", "==", id).get(),
+    db.collection("leads").where("clientId", "==", id).get(),
+  ]);
+  const batch = db.batch();
+  materiaisSnap.docs.forEach((d) => batch.delete(d.ref));
+  leadsSnap.docs.forEach((d) => batch.delete(d.ref));
+  batch.delete(db.collection("clients").doc(id));
+  await batch.commit();
+
+  if (SELECTED_CLIENT_ID === id) SELECTED_CLIENT_ID = null;
+  renderAdmin();
+}
   const name = prompt("Nome do cliente:");
   if (!name) return;
   await db.collection("clients").add({ name, since: new Date().toLocaleDateString("pt-BR", { month: "short", year: "numeric" }), authorizedEmails: [], createdAt: firebase.firestore.FieldValue.serverTimestamp() });
@@ -404,7 +467,7 @@ async function renderHub() {
   const materials = snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort(sortByCreatedAtDesc);
 
   const countsSnap = await db.collection("materials").where("clientId", "==", CLIENT_ID).get();
-  const counts = { social: 0, encartes: 0, relatorios: 0 };
+  const counts = { redes_sociais: 0, comercial: 0, relatorios: 0, em_producao: 0 };
   countsSnap.docs.forEach((d) => { const c = d.data().category; if (counts[c] !== undefined) counts[c]++; });
 
   const activeCat = CATEGORIES.find((c) => c.id === ACTIVE_CATEGORY);
