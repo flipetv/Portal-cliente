@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Portal Cliente</title>
+<meta name="theme-color" content="#2F6FED">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<!--
+  ========================= COMO CONFIGURAR =========================
+  1) Crie um projeto grátis em https://console.firebase.google.com
+  2) Em "Build > Authentication > Sign-in method", ative o provedor "Google"
+  3) Em "Build > Firestore Database", crie o banco (modo produção)
+  4) Em "Project settings > General > Seus apps", crie um "app da Web" e
+     copie o objeto de config para FIREBASE_CONFIG abaixo
+  5) Preencha ADMIN_EMAILS com o(s) e-mail(s) da agência
+  6) Abra este arquivo num servidor local (ex: extensão "Live Server" do
+     VS Code) ou publique direto na Netlify — não funciona em file:// puro
+     por causa do login do Google
+  =====================================================================
+-->
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:#ffffff;color:#37352f;font-family:'Inter',sans-serif}
+body{-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:#d9d9d6;border-radius:8px}
+button,input,select,textarea{font-family:inherit}
+button{cursor:pointer}
+
+/* ---- tokens ---- */
+:root{
+  --bg:#ffffff; --sidebar:#f7f7f5; --border:#e9e9e7;
+  --text:#37352f; --muted:#7c7c78;
+  --accent:#2F6FED; --accent-soft:#2F6FED14;
+  --green:#2b8a5e; --green-soft:#2b8a5e18;
+  --orange:#e06646; --orange-soft:#e0664614;
+}
+
+/* ---- login ---- */
+#login-screen{position:fixed;inset:0;background:var(--bg);display:flex;
+  align-items:center;justify-content:center;z-index:200;padding:24px}
+#login-screen.hidden{display:none}
+.login-card{width:100%;max-width:360px;display:flex;flex-direction:column;
+  align-items:center;gap:28px;text-align:center}
+.login-logo{width:64px;height:64px;border-radius:16px;background:var(--accent);
+  color:#fff;font-weight:700;font-size:20px;display:flex;align-items:center;justify-content:center}
+.login-title{font-size:24px;font-weight:700;letter-spacing:-.3px}
+.login-sub{font-size:14px;color:var(--muted)}
+.google-btn{width:100%;padding:13px;border-radius:8px;border:1px solid var(--border);
+  background:#fff;display:flex;align-items:center;justify-content:center;gap:10px;
+  font-weight:600;font-size:14.5px;transition:background .15s}
+.google-btn:hover{background:var(--sidebar)}
+.login-footer{font-size:12px;color:var(--muted)}
+.login-error{color:#E74C3C;font-size:12.5px;display:none}
+
+/* ---- shell ---- */
+#app-shell{display:none}
+#app-shell.visible{display:block}
+.topbar{display:flex;align-items:center;padding:10px 16px;gap:6px;
+  border-bottom:1px solid var(--border);background:var(--sidebar)}
+.topbar .brand{display:flex;align-items:center;gap:6px;font-weight:700;font-size:13px}
+.dot{width:8px;height:8px;border-radius:99px;background:var(--accent)}
+.nav-btn{padding:6px 12px;border-radius:6px;font-size:13px;font-weight:600;color:var(--muted);
+  transition:background .15s,color .15s;border:none;background:transparent}
+.nav-btn.active{background:var(--accent);color:#fff}
+.topbar .userinfo{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--muted)}
+.logout-btn{border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:12px;background:#fff;color:var(--muted)}
+
+.layout{display:flex;min-height:calc(100vh - 45px)}
+.sidebar{width:230px;flex-shrink:0;border-right:1px solid var(--border);background:var(--sidebar);padding:20px 14px}
+.sidebar-label{font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--muted);margin-bottom:8px}
+.sidebar-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 8px;
+  border-radius:6px;font-size:13.5px;cursor:pointer;margin-bottom:2px;background:transparent;border:none;width:100%;text-align:left;color:var(--text)}
+.sidebar-row.active{background:var(--accent-soft);color:var(--accent)}
+.sidebar-row .count{color:var(--muted);font-size:12px}
+.sidebar-add{font-size:13.5px;color:var(--accent);padding:7px 8px;background:none;border:none}
+.sidebar-foot{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);font-size:12.5px;color:var(--muted);display:flex;gap:6px}
+.main{flex:1;padding:32px 40px;overflow:auto}
+
+.tabs{display:flex;gap:20px;border-bottom:1px solid var(--border);margin-bottom:20px}
+.tab-btn{padding:8px 2px;font-size:14px;font-weight:600;color:var(--muted);background:none;border:none;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab-btn.active{color:var(--text);border-bottom-color:var(--accent)}
+
+.card-box{background:var(--sidebar);border:1px solid var(--border);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px;margin-bottom:22px}
+.form-row{display:flex;gap:10px}
+.inp{flex:1;padding:9px 10px;border-radius:7px;border:1px solid var(--border);font-size:13.5px;background:#fff;color:var(--text)}
+.btn-accent{background:var(--accent);color:#fff;padding:9px 16px;border-radius:7px;font-size:13.5px;font-weight:600;border:none}
+.btn-ghost{border:1px solid var(--border);background:#fff;padding:9px 16px;border-radius:7px;font-size:13.5px;font-weight:600}
+
+.tag{font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:99px;display:inline-flex;align-items:center;gap:4px}
+.sent-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border);font-size:13.5px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+.mcard{border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;background:#fff}
+.mcard-thumb{height:100px;display:flex;align-items:center;justify-content:center;font-size:34px}
+.mcard-body{padding:14px}
+.mcard-title{font-size:14px;font-weight:600;margin-bottom:4px}
+.mcard-meta{display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:12px;color:var(--muted)}
+.mcard-actions{display:flex;gap:12px;padding-top:10px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted)}
+
+.mat-topbar{display:flex;align-items:center;gap:10px;padding:14px 24px;background:var(--sidebar);border-bottom:1px solid var(--border)}
+.mat-body{max-width:900px;margin:0 auto;padding:40px 56px}
+.mat-preview{min-height:420px;background:var(--sidebar);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:96px}
+
+.kanban-wrap{display:flex;gap:16px;overflow-x:auto}
+.kcol{width:260px;flex-shrink:0;display:flex;flex-direction:column;gap:10px}
+.kcol-title{font-size:11.5px;font-weight:700;letter-spacing:.3px;color:var(--muted)}
+.lead-card{border:1px solid var(--border);border-radius:8px;padding:12px;cursor:pointer;background:#fff;display:flex;flex-direction:column;gap:6px}
+.side-peek{width:300px;flex-shrink:0;border:1px solid var(--border);border-radius:10px;padding:18px;background:var(--sidebar);display:flex;flex-direction:column;gap:14px;height:fit-content}
+
+textarea.inp{min-height:70px;resize:vertical}
+.empty{font-size:13px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">PC</div>
+    <div>
+      <div class="login-title">Acesso do Cliente</div>
+      <div class="login-sub" style="margin-top:6px">portal.suaempresa.com</div>
+    </div>
+    <button class="google-btn" onclick="loginGoogle()">
+      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.5 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.4-.1-2.5-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.5 5.1 29.6 3 24 3c-7.6 0-14.1 4.3-17.4 11.7z"/><path fill="#4CAF50" d="M24 45c5.5 0 10.4-1.9 14.2-5.1l-6.6-5.4C29.6 36.6 26.9 37.5 24 37.5c-5.3 0-9.7-3.3-11.3-8l-6.6 5.1C9.8 40.6 16.3 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.2-4.3 5.5l6.6 5.4C39.9 37 44 31.4 44 24c0-1.4-.1-2.5-.4-3.5z"/></svg>
+      Entrar com Google
+    </button>
+    <div class="login-error" id="login-error"></div>
+    <div class="login-footer">Acesso restrito · contate seu gestor de conta</div>
+  </div>
+</div>
+
+<div id="app-shell">
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span> PORTAL CLIENTE</div>
+    <div id="nav-buttons" style="display:flex;gap:4px;margin-left:24px"></div>
+    <div class="userinfo">
+      <span id="user-email"></span>
+      <button class="logout-btn" onclick="logout()">Sair</button>
+    </div>
+  </div>
+  <div id="main"></div>
+</div>
+
+<script>
+// ===================== CONFIGURAÇÃO =====================
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDY15Rsr8stI-UBQCNNqsr8zpXUE_iJLYg",
+  authDomain: "portal-cliente-97d2a.firebaseapp.com",
+  projectId: "portal-cliente-97d2a",
+  storageBucket: "portal-cliente-97d2a.firebasestorage.app",
+  messagingSenderId: "62869379722",
+  appId: "1:62869379722:web:08dd556fe841df4755ab73"
+};
+const ADMIN_EMAILS = ["ftavaresvitorio@gmail.com"]; // e-mails da agência
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => (s || "").toString().replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+const CATEGORIES = [
+  { id: "social", label: "Artes Sociais", icon: "📢" },
+  { id: "encartes", label: "Encartes", icon: "📄" },
+  { id: "relatorios", label: "Relatórios", icon: "📈" },
+];
+const CATEGORY_BG = { social: "#FCE7EF", encartes: "#EAF1FE", relatorios: "#FFF6DA" };
+const CATEGORY_EMOJI = { social: "🌷", encartes: "📄", relatorios: "📈" };
+
+const CRM_COLUMNS = [
+  { id: "recebido", title: "LEAD RECEBIDO" },
+  { id: "qualificacao", title: "QUALIFICAÇÃO / FINANC." },
+  { id: "visita", title: "VISITA / REUNIÃO" },
+  { id: "fechamento", title: "FECHAMENTO" },
+];
+const TEMP_META = {
+  quente: { emoji: "🔥", soft: "var(--orange-soft)", color: "var(--orange)" },
+  morno: { emoji: "🙂", soft: "var(--sidebar)", color: "var(--muted)" },
+  fechando: { emoji: "✅", soft: "var(--green-soft)", color: "var(--green)" },
+};
+
+// ===================== ESTADO =====================
+let ROLE = null;          // 'admin' | 'cliente'
+let CLIENT_ID = null;     // clientId do usuário logado (se for cliente)
+let PAGE = "hub";         // 'admin' | 'hub' | 'material' | 'crm'
+let CLIENTS_CACHE = [];   // usado pelo admin
+let SELECTED_CLIENT_ID = null;
+let ADMIN_TAB = "materiais";
+let ACTIVE_CATEGORY = "social";
+let ACTIVE_MATERIAL_ID = null;
+let SELECTED_LEAD_ID = null;
+
+// ===================== LOGIN =====================
+function loginGoogle() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  auth.signInWithPopup(provider).catch((err) => {
+    const el = $("login-error");
+    el.style.display = "block";
+    el.textContent = "Erro: " + (err.message || "tente novamente");
+  });
+}
+function logout() {
+  if (!confirm("Deseja sair da sua conta?")) return;
+  auth.signOut();
+}
+
+auth.onAuthStateChanged(async (user) => {
+  const loginScreen = $("login-screen");
+  const shell = $("app-shell");
+
+  if (!user) {
+    ROLE = null; CLIENT_ID = null;
+    loginScreen.classList.remove("hidden");
+    shell.classList.remove("visible");
+    return;
+  }
+
+  const email = (user.email || "").toLowerCase();
+
+  if (ADMIN_EMAILS.includes(email)) {
+    ROLE = "admin";
+  } else {
+    const snap = await db.collection("clients").where("authorizedEmails", "array-contains", email).limit(1).get();
+    if (snap.empty) {
+      const el = $("login-error");
+      el.style.display = "block";
+      el.textContent = "Este e-mail ainda não tem acesso liberado. Fale com seu gestor de conta.";
+      auth.signOut();
+      return;
+    }
+    ROLE = "cliente";
+    CLIENT_ID = snap.docs[0].id;
+  }
+
+  $("user-email").textContent = email;
+  loginScreen.classList.add("hidden");
+  shell.classList.add("visible");
+  renderNav();
+  nav(ROLE === "admin" ? "admin" : "hub");
+});
+
+// ===================== NAVEGAÇÃO =====================
+function renderNav() {
+  const items = ROLE === "admin"
+    ? [["admin", "Admin"], ["crm", "CRM"]]
+    : [["hub", "Biblioteca"], ["crm", "CRM"]];
+  $("nav-buttons").innerHTML = items.map(([id, label]) =>
+    `<button class="nav-btn ${PAGE === id ? "active" : ""}" onclick="nav('${id}')">${label}</button>`
+  ).join("");
+}
+
+function nav(page) {
+  PAGE = page;
+  renderNav();
+  if (page === "admin") renderAdmin();
+  else if (page === "hub") renderHub();
+  else if (page === "material") renderMaterial();
+  else if (page === "crm") renderCrm();
+}
+
+// ===================== ADMIN =====================
+async function renderAdmin() {
+  const snap = await db.collection("clients").orderBy("createdAt", "asc").get();
+  CLIENTS_CACHE = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  if (!SELECTED_CLIENT_ID && CLIENTS_CACHE[0]) SELECTED_CLIENT_ID = CLIENTS_CACHE[0].id;
+  const client = CLIENTS_CACHE.find((c) => c.id === SELECTED_CLIENT_ID);
+
+  $("main").innerHTML = `
+    <div class="layout">
+      <div class="sidebar">
+        <div class="sidebar-label">MEUS CLIENTES</div>
+        ${CLIENTS_CACHE.map((c) => `
+          <button class="sidebar-row ${c.id === SELECTED_CLIENT_ID ? "active" : ""}" onclick="selectClient('${c.id}')">
+            <span>${esc(c.name)}</span>
+          </button>`).join("")}
+        <button class="sidebar-add" onclick="novoCliente()">+ novo cliente</button>
+        <div class="sidebar-foot"><span>⚙</span><span>Configurações Globais</span></div>
+      </div>
+      <div class="main">
+        ${client ? `
+          <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:18px">
+            <div style="font-size:28px;font-weight:800;letter-spacing:-.5px">${esc(client.name)}</div>
+            <div style="font-size:13px;color:var(--muted)">cliente desde ${esc(client.since || "")}</div>
+          </div>
+          <div class="tabs">
+            <button class="tab-btn ${ADMIN_TAB === "materiais" ? "active" : ""}" onclick="setAdminTab('materiais')">Materiais</button>
+            <button class="tab-btn ${ADMIN_TAB === "crm" ? "active" : ""}" onclick="setAdminTab('crm')">CRM / Modelos</button>
+          </div>
+          <div id="admin-tab-content"></div>
+        ` : `<p class="empty">Nenhum cliente cadastrado ainda. Clique em "+ novo cliente".</p>`}
+      </div>
+    </div>`;
+
+  if (client) {
+    if (ADMIN_TAB === "materiais") renderAdminMateriais(client);
+    else renderAdminCrmModelos();
+  }
+}
+
+function selectClient(id) { SELECTED_CLIENT_ID = id; renderAdmin(); }
+function setAdminTab(tab) { ADMIN_TAB = tab; renderAdmin(); }
+
+async function novoCliente() {
+  const name = prompt("Nome do cliente:");
+  if (!name) return;
+  await db.collection("clients").add({ name, since: new Date().toLocaleDateString("pt-BR", { month: "short", year: "numeric" }), authorizedEmails: [], createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+  renderAdmin();
+}
+
+async function renderAdminMateriais(client) {
+  const snap = await db.collection("materials").where("clientId", "==", client.id).orderBy("createdAt", "desc").get();
+  const materials = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  $("admin-tab-content").innerHTML = `
+    <div class="card-box">
+      <div style="font-weight:600;font-size:14px">Subir novo material</div>
+      <div class="form-row">
+        <input class="inp" id="new-mat-title" placeholder="Título (ex: Post Dia das Mães)">
+        <select class="inp" id="new-mat-cat">
+          ${CATEGORIES.map((c) => `<option value="${c.id}">${c.icon} ${c.label}</option>`).join("")}
+        </select>
+      </div>
+      <input class="inp" id="new-mat-link" placeholder="Link do arquivo / template (Canva, Drive...)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13.5px">
+          <input type="checkbox" id="new-mat-download" checked> Permitir download do cliente
+        </label>
+        <button class="btn-accent" onclick="enviarMaterial('${client.id}')">Enviar material</button>
+      </div>
+    </div>
+    <div>
+      <div class="sidebar-label" style="margin-bottom:10px">JÁ ENVIADO (${materials.length})</div>
+      ${materials.length === 0 ? `<p class="empty">Nenhum material enviado ainda.</p>` : materials.map((m) => `
+        <div class="sent-row">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span>${esc(m.title)}</span>
+            <span class="tag" style="background:var(--sidebar);color:var(--muted);border:1px solid var(--border)">${CATEGORIES.find(c=>c.id===m.category)?.label || m.category}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:12px;color:var(--muted)">${esc(m.dateLabel || "")}</span>
+            <span class="tag" style="background:var(--green-soft);color:var(--green)">enviado</span>
+          </div>
+        </div>`).join("")}
+    </div>`;
+}
+
+async function enviarMaterial(clientId) {
+  const title = $("new-mat-title").value.trim();
+  const category = $("new-mat-cat").value;
+  const fileUrl = $("new-mat-link").value.trim();
+  const allowDownload = $("new-mat-download").checked;
+  if (!title || !fileUrl) { alert("Preencha título e link do material."); return; }
+
+  await db.collection("materials").add({
+    clientId, title, category, fileUrl, allowDownload,
+    dateLabel: new Date().toLocaleDateString("pt-BR"),
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  });
+  renderAdminMateriais(CLIENTS_CACHE.find((c) => c.id === clientId));
+}
+
+function renderAdminCrmModelos() {
+  $("admin-tab-content").innerHTML = `
+    <div class="card-box">
+      <div style="font-weight:600;font-size:14px">Modelo de funil</div>
+      <select class="inp" id="funil-model">
+        <option>Funil Enxuto (padrão)</option>
+        <option>Funil Imobiliário</option>
+        <option>Funil Clínica/Saúde</option>
+      </select>
+      <button class="btn-accent" style="align-self:flex-start" onclick="injetarFunil()">⚡ Injetar Modelo de Funil</button>
+    </div>`;
+}
+
+async function injetarFunil() {
+  if (!SELECTED_CLIENT_ID) return;
+  if (!confirm("Isso cria leads de exemplo no funil deste cliente. Continuar?")) return;
+  const exemplos = [
+    { name: "Novo Lead", value: 1000, temperature: "morno", column: "recebido" },
+  ];
+  const batch = db.batch();
+  exemplos.forEach((l) => {
+    const ref = db.collection("leads").doc();
+    batch.set(ref, { ...l, clientId: SELECTED_CLIENT_ID, notes: "", history: ["Lead criado a partir do modelo de funil"], createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+  });
+  await batch.commit();
+  alert("Modelo de funil injetado.");
+}
+
+// ===================== BIBLIOTECA (CLIENTE) =====================
+async function renderHub() {
+  const snap = await db.collection("materials").where("clientId", "==", CLIENT_ID).where("category", "==", ACTIVE_CATEGORY).orderBy("createdAt", "desc").get();
+  const materials = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  const countsSnap = await db.collection("materials").where("clientId", "==", CLIENT_ID).get();
+  const counts = { social: 0, encartes: 0, relatorios: 0 };
+  countsSnap.docs.forEach((d) => { const c = d.data().category; if (counts[c] !== undefined) counts[c]++; });
+
+  const activeCat = CATEGORIES.find((c) => c.id === ACTIVE_CATEGORY);
+
+  $("main").innerHTML = `
+    <div class="layout">
+      <div class="sidebar">
+        <div class="sidebar-label">BIBLIOTECA</div>
+        ${CATEGORIES.map((c) => `
+          <button class="sidebar-row ${c.id === ACTIVE_CATEGORY ? "active" : ""}" onclick="setCategory('${c.id}')">
+            <span>${c.icon} ${c.label}</span><span class="count">${counts[c.id]}</span>
+          </button>`).join("")}
+        <div class="sidebar-label" style="margin-top:18px">VENDAS</div>
+        <button class="sidebar-row" onclick="nav('crm')"><span>📇 CRM / Leads</span></button>
+      </div>
+      <div class="main">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px">
+          <div style="font-size:28px;font-weight:800;letter-spacing:-.5px">${activeCat.icon} ${activeCat.label}</div>
+          <span class="tag" style="background:var(--sidebar);color:var(--muted);border:1px solid var(--border)">galeria ▾</span>
+        </div>
+        <div class="grid">
+          ${materials.length === 0 ? `<p class="empty">Nenhum material nesta categoria ainda.</p>` : materials.map((m) => `
+            <div class="mcard" onclick="openMaterial('${m.id}')">
+              <div class="mcard-thumb" style="background:${CATEGORY_BG[m.category] || "#f0f0f0"}">${CATEGORY_EMOJI[m.category] || "📁"}</div>
+              <div class="mcard-body">
+                <div class="mcard-title">${esc(m.title)}</div>
+                <div class="mcard-meta"><span>${esc(m.dateLabel || "")}</span></div>
+                <div class="mcard-actions">
+                  <span>👁 Visualizar</span>
+                  ${m.allowDownload ? "<span>⬇ Baixar</span>" : ""}
+                  <span>✏️ Editar</span>
+                </div>
+              </div>
+            </div>`).join("")}
+        </div>
+      </div>
+    </div>`;
+}
+function setCategory(id) { ACTIVE_CATEGORY = id; renderHub(); }
+function openMaterial(id) { ACTIVE_MATERIAL_ID = id; nav("material"); }
+
+// ===================== PÁGINA DO MATERIAL =====================
+async function renderMaterial() {
+  const doc = await db.collection("materials").doc(ACTIVE_MATERIAL_ID).get();
+  const m = { id: doc.id, ...doc.data() };
+
+  $("main").innerHTML = `
+    <div class="mat-topbar">
+      <a class="btn-accent" href="${esc(m.fileUrl)}" target="_blank" style="text-decoration:none">✏️ Criar Cópia no Canva</a>
+      ${m.allowDownload ? `<a class="btn-ghost" href="${esc(m.fileUrl)}" target="_blank" style="text-decoration:none">⬇️ Fazer Download</a>` : ""}
+      <a href="javascript:void(0)" onclick="nav('hub')" style="margin-left:auto;font-size:13px;color:var(--accent);text-decoration:none">← Voltar à biblioteca</a>
+    </div>
+    <div class="mat-body">
+      <div style="font-size:34px;font-weight:800;letter-spacing:-.6px;margin-bottom:14px">${esc(m.title)}</div>
+      <div style="display:flex;gap:8px;margin-bottom:24px">
+        <span class="tag" style="background:var(--green-soft);color:var(--green)">enviado ${esc(m.dateLabel || "")}</span>
+        <span class="tag" style="background:var(--sidebar);color:var(--muted);border:1px solid var(--border)">${CATEGORIES.find(c=>c.id===m.category)?.label || m.category}</span>
+      </div>
+      <div class="mat-preview">${CATEGORY_EMOJI[m.category] || "📁"}</div>
+    </div>`;
+}
+
+// ===================== CRM KANBAN =====================
+async function renderCrm() {
+  const clientId = ROLE === "admin" ? SELECTED_CLIENT_ID : CLIENT_ID;
+  const clientName = ROLE === "admin"
+    ? (CLIENTS_CACHE.find((c) => c.id === clientId)?.name || "")
+    : ($("user-email").textContent);
+
+  const snap = clientId ? await db.collection("leads").where("clientId", "==", clientId).get() : { docs: [] };
+  const leads = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  $("main").innerHTML = `
+    <div style="padding:20px 24px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+        <div style="font-size:20px;font-weight:700">Funil de Vendas ${clientName ? "· " + esc(clientName) : ""}</div>
+        <button class="btn-accent" onclick="novoLead('${clientId || ""}')">+ Novo Lead</button>
+      </div>
+      <div class="kanban-wrap" id="kanban-wrap">
+        ${CRM_COLUMNS.map((col) => {
+          const colLeads = leads.filter((l) => l.column === col.id);
+          return `
+          <div class="kcol">
+            <div class="kcol-title">${col.title} · ${colLeads.length}</div>
+            ${colLeads.map((l) => {
+              const tm = TEMP_META[l.temperature] || TEMP_META.morno;
+              return `
+              <div class="lead-card" onclick="openLead('${l.id}')">
+                <div style="font-size:14px;font-weight:600">${esc(l.name)}</div>
+                <div style="font-size:13px">R$ ${Number(l.value || 0).toLocaleString("pt-BR")}</div>
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                  <span class="tag" style="background:${tm.soft};color:${tm.color}">${tm.emoji} ${esc(l.temperature)}</span>
+                </div>
+              </div>`;
+            }).join("")}
+          </div>`;
+        }).join("")}
+        <div id="side-peek-slot"></div>
+      </div>
+    </div>`;
+
+  if (SELECTED_LEAD_ID) renderSidePeek(leads.find((l) => l.id === SELECTED_LEAD_ID));
+}
+
+async function novoLead(clientId) {
+  if (!clientId) { alert("Selecione um cliente primeiro."); return; }
+  const name = prompt("Nome do lead:");
+  if (!name) return;
+  await db.collection("leads").add({
+    clientId, name, value: 0, temperature: "morno", column: "recebido",
+    notes: "", history: ["Lead criado manualmente"],
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  });
+  renderCrm();
+}
+
+function openLead(id) { SELECTED_LEAD_ID = id; renderCrm(); }
+function closeLead() { SELECTED_LEAD_ID = null; renderCrm(); }
+
+function renderSidePeek(lead) {
+  if (!lead) return;
+  const tm = TEMP_META[lead.temperature] || TEMP_META.morno;
+  $("side-peek-slot").outerHTML = `
+    <div class="side-peek" id="side-peek-slot">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div style="font-size:20px;font-weight:700">${esc(lead.name)}</div>
+        <button onclick="closeLead()" style="border:none;background:none;font-size:18px;color:var(--muted)">×</button>
+      </div>
+      <div style="display:flex;gap:8px">
+        <span class="tag" style="background:var(--sidebar);border:1px solid var(--border)">R$ ${Number(lead.value || 0).toLocaleString("pt-BR")}</span>
+        <span class="tag" style="background:${tm.soft};color:${tm.color}">${tm.emoji} ${esc(lead.temperature)}</span>
+      </div>
+      <div style="border-top:1px solid var(--border)"></div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px">HISTÓRICO</div>
+        ${(lead.history || []).map((h) => `<div style="font-size:12.5px;color:var(--muted)">• ${esc(h)}</div>`).join("")}
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:8px">ANOTAÇÃO RÁPIDA</div>
+        <textarea class="inp" id="lead-notes" placeholder="Escreva uma nota sobre este lead...">${esc(lead.notes || "")}</textarea>
+        <button class="btn-ghost" style="margin-top:8px" onclick="salvarNota('${lead.id}')">Salvar nota</button>
+      </div>
+    </div>`;
+}
+
+async function salvarNota(leadId) {
+  const notes = $("lead-notes").value;
+  await db.collection("leads").doc(leadId).update({ notes });
+  alert("Nota salva.");
+}
+</script>
+</body>
+</html>
