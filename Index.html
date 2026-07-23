@@ -204,6 +204,7 @@ let SELECTED_LEAD_ID = null;
 
 // ===================== LOGIN =====================
 function loginGoogle() {
+  sessionStorage.setItem("pc_login_attempt", "1");
   const provider = new firebase.auth.GoogleAuthProvider();
   auth.signInWithRedirect(provider);
 }
@@ -212,7 +213,16 @@ function logout() {
   auth.signOut();
 }
 
-auth.getRedirectResult().catch((err) => {
+auth.getRedirectResult().then((result) => {
+  const voltandoDeRedirect = sessionStorage.getItem("pc_login_attempt") === "1";
+  sessionStorage.removeItem("pc_login_attempt");
+  if (voltandoDeRedirect && !result.user) {
+    const el = $("login-error");
+    el.style.display = "block";
+    el.textContent = "O Google não devolveu sua conta pro site. Isso costuma acontecer quando o navegador bloqueia cookies de terceiros. Tente em outra aba anônima ou em outro navegador (ex: Chrome atualizado).";
+  }
+}).catch((err) => {
+  sessionStorage.removeItem("pc_login_attempt");
   const el = $("login-error");
   el.style.display = "block";
   el.textContent = "Erro: " + (err.message || "tente novamente");
