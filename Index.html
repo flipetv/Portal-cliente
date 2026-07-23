@@ -205,16 +205,18 @@ let SELECTED_LEAD_ID = null;
 // ===================== LOGIN =====================
 function loginGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithPopup(provider).catch((err) => {
-    const el = $("login-error");
-    el.style.display = "block";
-    el.textContent = "Erro: " + (err.message || "tente novamente");
-  });
+  auth.signInWithRedirect(provider);
 }
 function logout() {
   if (!confirm("Deseja sair da sua conta?")) return;
   auth.signOut();
 }
+
+auth.getRedirectResult().catch((err) => {
+  const el = $("login-error");
+  el.style.display = "block";
+  el.textContent = "Erro: " + (err.message || "tente novamente");
+});
 
 auth.onAuthStateChanged(async (user) => {
   const loginScreen = $("login-screen");
@@ -375,6 +377,8 @@ async function excluirCliente(id) {
   if (SELECTED_CLIENT_ID === id) SELECTED_CLIENT_ID = null;
   renderAdmin();
 }
+
+async function novoCliente() {
   const name = prompt("Nome do cliente:");
   if (!name) return;
   await db.collection("clients").add({ name, since: new Date().toLocaleDateString("pt-BR", { month: "short", year: "numeric" }), authorizedEmails: [], createdAt: firebase.firestore.FieldValue.serverTimestamp() });
