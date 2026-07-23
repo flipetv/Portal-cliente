@@ -231,19 +231,27 @@ auth.onAuthStateChanged(async (user) => {
 
   const email = (user.email || "").toLowerCase();
 
-  if (ADMIN_EMAILS.includes(email)) {
-    ROLE = "admin";
-  } else {
-    const snap = await db.collection("clients").where("authorizedEmails", "array-contains", email).limit(1).get();
-    if (snap.empty) {
-      const el = $("login-error");
-      el.style.display = "block";
-      el.textContent = "Este e-mail ainda não tem acesso liberado. Fale com seu gestor de conta.";
-      auth.signOut();
-      return;
+  try {
+    if (ADMIN_EMAILS.includes(email)) {
+      ROLE = "admin";
+    } else {
+      const snap = await db.collection("clients").where("authorizedEmails", "array-contains", email).limit(1).get();
+      if (snap.empty) {
+        const el = $("login-error");
+        el.style.display = "block";
+        el.textContent = `O e-mail ${email} ainda não tem acesso liberado. Fale com seu gestor de conta.`;
+        auth.signOut();
+        return;
+      }
+      ROLE = "cliente";
+      CLIENT_ID = snap.docs[0].id;
     }
-    ROLE = "cliente";
-    CLIENT_ID = snap.docs[0].id;
+  } catch (err) {
+    const el = $("login-error");
+    el.style.display = "block";
+    el.textContent = "Erro ao verificar acesso: " + (err.message || err);
+    auth.signOut();
+    return;
   }
 
   $("user-email").textContent = email;
