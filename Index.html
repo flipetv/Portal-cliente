@@ -15,8 +15,10 @@
   3) Em "Build > Firestore Database", crie o banco (modo produção)
   4) Em "Project settings > General > Seus apps", crie um "app da Web" e
      copie o objeto de config para FIREBASE_CONFIG abaixo
-  5) Preencha ADMIN_EMAILS com o(s) e-mail(s) da agência
-  6) Abra este arquivo num servidor local (ex: extensão "Live Server" do
+  5) Ainda em "Sign-in method > Google", clique para expandir e copie o
+     "Web client ID" (Web SDK configuration) para GOOGLE_CLIENT_ID abaixo
+  6) Preencha ADMIN_EMAILS com o(s) e-mail(s) da agência
+  7) Abra este arquivo num servidor local (ex: extensão "Live Server" do
      VS Code) ou publique direto na Netlify — não funciona em file:// puro
      por causa do login do Google
   =====================================================================
@@ -25,6 +27,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
 
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -129,10 +132,7 @@ textarea.inp{min-height:70px;resize:vertical}
       <div class="login-title">Acesso do Cliente</div>
       <div class="login-sub" style="margin-top:6px">portal.suaempresa.com</div>
     </div>
-    <button class="google-btn" onclick="loginGoogle()">
-      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.5 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.4-.1-2.5-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.5 5.1 29.6 3 24 3c-7.6 0-14.1 4.3-17.4 11.7z"/><path fill="#4CAF50" d="M24 45c5.5 0 10.4-1.9 14.2-5.1l-6.6-5.4C29.6 36.6 26.9 37.5 24 37.5c-5.3 0-9.7-3.3-11.3-8l-6.6 5.1C9.8 40.6 16.3 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.2-4.3 5.5l6.6 5.4C39.9 37 44 31.4 44 24c0-1.4-.1-2.5-.4-3.5z"/></svg>
-      Entrar com Google
-    </button>
+    <div id="g_id_button_container" style="display:flex;justify-content:center;width:100%"></div>
     <div class="login-error" id="login-error"></div>
     <div class="login-footer">Acesso restrito · contate seu gestor de conta</div>
   </div>
@@ -161,6 +161,7 @@ const FIREBASE_CONFIG = {
   appId: "1:62869379722:web:08dd556fe841df4755ab73"
 };
 const ADMIN_EMAILS = ["ftavaresvitorio@gmail.com"]; // e-mails da agência
+const GOOGLE_CLIENT_ID = "62869379722-9p9t778nolns82n6gldna3tq51u4o8bh.apps.googleusercontent.com"; // Web client ID (Firebase > Authentication > Google > Web SDK configuration)
 
 firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
@@ -203,30 +204,28 @@ let ACTIVE_MATERIAL_ID = null;
 let SELECTED_LEAD_ID = null;
 
 // ===================== LOGIN =====================
-function loginGoogle() {
-  sessionStorage.setItem("pc_login_attempt", "1");
-  const provider = new firebase.auth.GoogleAuthProvider();
-  auth.signInWithRedirect(provider);
-}
 function logout() {
   if (!confirm("Deseja sair da sua conta?")) return;
   auth.signOut();
 }
 
-auth.getRedirectResult().then((result) => {
-  const voltandoDeRedirect = sessionStorage.getItem("pc_login_attempt") === "1";
-  sessionStorage.removeItem("pc_login_attempt");
-  if (voltandoDeRedirect && !result.user) {
+function handleCredentialResponse(response) {
+  const credential = firebase.auth.GoogleAuthProvider.credential(response.credential);
+  auth.signInWithCredential(credential).catch((err) => {
     const el = $("login-error");
     el.style.display = "block";
-    el.textContent = "O Google não devolveu sua conta pro site. Isso costuma acontecer quando o navegador bloqueia cookies de terceiros. Tente em outra aba anônima ou em outro navegador (ex: Chrome atualizado).";
-  }
-}).catch((err) => {
-  sessionStorage.removeItem("pc_login_attempt");
-  const el = $("login-error");
-  el.style.display = "block";
-  el.textContent = "Erro: " + (err.message || "tente novamente");
+    el.textContent = "Erro: " + (err.message || "tente novamente");
+  });
+}
+
+google.accounts.id.initialize({
+  client_id: GOOGLE_CLIENT_ID,
+  callback: handleCredentialResponse,
 });
+google.accounts.id.renderButton(
+  document.getElementById("g_id_button_container"),
+  { theme: "outline", size: "large", width: 328, text: "continue_with" }
+);
 
 auth.onAuthStateChanged(async (user) => {
   const loginScreen = $("login-screen");
